@@ -41,34 +41,26 @@ namespace DarkTools {
         [ChatSubCommand(nameof(DarkTools), "Command to check where you can sell an item, and how many the store can fit and afford.", "wts", ChatAuthorizationLevel.User)]
         public static void WantToSell(User user, string itemName) {
             var authManager = ServiceHolder<IAuthManager>.Obj;
+
             var lookup = Item.AllItemsExceptHidden.ToDictionary(i => i.DisplayName.ToString().ToLower());
-            if (!lookup.ContainsKey(itemName.ToLower()))
+            if (!lookup.ContainsKey(itemName.ToLower())) {
+                SendMessage(user, $"Can't find the item {itemName}");
                 return;
+            }
             var item = lookup[itemName.ToLower()];
 
             var sb = new StringBuilder();
             bool first = true;
-            //sb.AppendLine($"Item to check: {item.MarkedUpName}");
-            var stores = WorldObjectUtil.AllObjsWithComponent<StoreComponent>().Where(store => store.OnOff.On).ToList();
-            if (stores.Count == 0)
+            var stores = WorldObjectUtil.AllObjsWithComponent<StoreComponent>().Where(store => store.OnOff.On && authManager.IsAuthorized(store.Parent, user, AccessType.ConsumerAccess, null)).ToList();
+            if (stores.Count == 0) {
+                SendMessage(user, "Could not find any store that is turned on and you are authorized as custumer!");
                 return;
+            }
             LocString currency = new LocString();
             foreach (var store in stores.OrderBy(s => s.Currency.IsPlayerCredit).ThenBy(s => s.CurrencyName)) {
-                // ignore unauthorized stores
-                if (!authManager.IsAuthorized(store.Parent, user, AccessType.ConsumerAccess, null))
-                    continue;
                 var bestBuyOffer = store.StoreData.BuyOffers.Where(o => o.Stack.Item.TypeID == item.TypeID).OrderByDescending(o => o.Price).FirstOrDefault();
                 if (bestBuyOffer == null)
                     continue;
-                if (currency != store.Currency.MarkedUpName) {
-                    currency = store.Currency.MarkedUpName;
-                    if (!first)
-                        sb.AppendLine();
-                    else
-                        first = false;
-                    sb.AppendLine(Text.Bold($"Sell {item.MarkedUpName} for {currency}"));
-                    sb.AppendLine();
-                }
                 var limit = bestBuyOffer.Limit;
                 int itemsInStock = 0;
                 int itemsFit = 0;
@@ -87,6 +79,16 @@ namespace DarkTools {
                 }
                 if (limit > 0 && itemsInStock >= limit)
                     continue;
+
+                if (currency != store.Currency.MarkedUpName) {
+                    currency = store.Currency.MarkedUpName;
+                    if (!first)
+                        sb.AppendLine();
+                    else
+                        first = false;
+                    sb.AppendLine(Text.Bold($"Sell {item.MarkedUpName} for {currency}"));
+                    sb.AppendLine();
+                }
                 int toSell = 999;
                 if (limit > 0) {
                     toSell = limit - itemsInStock;
@@ -98,8 +100,14 @@ namespace DarkTools {
                 sb.AppendLine($"{Math.Min(itemsFit, toSell)}\tfor\t{Text.Bold(Text.Color(Color.Yellow, bestBuyOffer.Price))} @ {store.Parent.MarkedUpName}");
 
             }
-            user.Player.OpenInfoPanel(item.DisplayName, sb.ToString(), "Trades");
-            Text.CopyToClipBoard("woops", null, "what the fuck?");
+            if (sb.Length > 0)
+                user.Player.OpenInfoPanel(item.DisplayName, sb.ToString(), "Trades");
+            else
+                SendMessage(user, $"No store found that is currently buying {item.MarkedUpName}");
+        }
+
+        private static void SendMessage(User user, string message) {
+            user.TempServerMessage(Localizer.DoStr(message));
         }
     }
 }
