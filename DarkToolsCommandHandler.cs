@@ -24,8 +24,11 @@ using Eco.Shared.Voxel;
 using System.Text;
 
 namespace DarkTools {
+    
+
     [ChatCommandHandler]
     public static class DarkToolsCommandHandler {
+        const string version = "1.0.1";
         [ChatCommand("Shows commands available from the DarkTools mod", "dt")]
         public static void DarkTools() { }
 
@@ -34,8 +37,12 @@ namespace DarkTools {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine(Localizer.DoStr("Welcome to DarkTools!"));
             sb.AppendLine(Localizer.DoStr("This mod provides some commands, that will make life and trading easier."));
+            SendMessage(user,sb.ToString());
+        }
 
-            user.TempServerMessage(sb.ToStringLoc());
+        [ChatSubCommand(nameof(DarkTools), "Version", ChatAuthorizationLevel.User)]
+        public static void Version(User user) {
+            SendMessage(user, version);
         }
 
         [ChatSubCommand(nameof(DarkTools), "Command to check where you can sell an item, and how many the store can fit and afford.", "wts", ChatAuthorizationLevel.User)]
