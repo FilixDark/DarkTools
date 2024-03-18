@@ -29,7 +29,7 @@ namespace DarkTools {
 
     [ChatCommandHandler]
     public static class DarkToolsCommandHandler {
-        const string version = "1.0.1";
+        const string version = "1.1.0";
 
         private static void SendMessage(User user, string message) {
             user.TempServerMessage(Localizer.DoStr(message));
