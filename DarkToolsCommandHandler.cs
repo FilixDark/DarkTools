@@ -21,6 +21,7 @@ using Eco.Shared.Math;
 using Eco.Shared.Serialization;
 using Eco.Shared.Utils;
 using Eco.Shared.Voxel;
+using Eco.WebServer.Web.Models;
 using System.Text;
 
 namespace DarkTools {
@@ -29,6 +30,11 @@ namespace DarkTools {
     [ChatCommandHandler]
     public static class DarkToolsCommandHandler {
         const string version = "1.0.1";
+
+        private static void SendMessage(User user, string message) {
+            user.TempServerMessage(Localizer.DoStr(message));
+        }
+
         [ChatCommand("Shows commands available from the DarkTools mod", "dt")]
         public static void DarkTools() { }
 
@@ -113,8 +119,98 @@ namespace DarkTools {
                 SendMessage(user, $"No store found that is currently buying {item.MarkedUpName}");
         }
 
-        private static void SendMessage(User user, string message) {
-            user.TempServerMessage(Localizer.DoStr(message));
+        [ChatSubCommand(nameof(DarkTools), "Copy tradeoffers from a source to a target store. Usage: /dt copystore 0,1 - Get storeindices by using CopyStore without parameter.", "copystore", ChatAuthorizationLevel.User)]
+        public static async Task CopyStore(User user, int source = -1, int target = -1) {
+
+            var sb = new StringBuilder();
+            var myStores = WorldObjectUtil.AllObjsWithComponent<StoreComponent>().Where(store => store.Owners.ContainsUser(user) ).OrderBy(s => s.Parent.Name).ToList();
+            if (myStores.Count == 0) {
+                SendMessage(user, "No owned stores found");
+                return;
+            }
+            int index = 0;
+
+            if (source >= myStores.Count || target >= myStores.Count || source < 0 || target < 0 || source == target) {
+                sb.AppendLine($"Use /dt copystore sourceindex targetindex");
+                sb.AppendLine($"Your stores:");
+                foreach (var store in myStores) {
+                    sb.AppendLine($"({index}) : {store.Parent.MarkedUpName}");
+                    index++;
+                }
+            }
+            else {
+                var sourceStore = myStores[source];
+                var targetStore = myStores[target];
+
+                var confirmation = await user.ConfirmBoxLoc($"Do you really want to copy {sourceStore.Parent.Name} to {targetStore.Parent.Name} and overwrite all tradeoffers?");
+                if(!confirmation) {
+                    SendMessage(user, "CopyStore cancelled!");
+                    return;
+                }
+
+                sb.AppendLine($"Copying store {sourceStore.Parent.Name} to {targetStore.Parent.Name}");
+                targetStore.StoreData.BuyCategories.Clear();
+                targetStore.StoreData.SellCategories.Clear();
+                int countBuyOffers = 0;
+                int countSellOffers = 0;
+                foreach (var cat in sourceStore.StoreData.BuyCategories) {
+                    targetStore.CreateCategoryWithOffers(user.Player, new List<int> { }, true);
+                    var newCat = targetStore.StoreData.BuyCategories.Last();
+                    foreach (var o in cat.Offers) {
+                        newCat.AddTradeOffer(o.Stack.Item.TypeID, o.MinDurability, o.MaxDurability, o.Price, o.Limit, null);
+                        countBuyOffers++;
+                    }
+                }
+                foreach (var cat in sourceStore.StoreData.SellCategories) {
+                    targetStore.CreateCategoryWithOffers(user.Player, new List<int> { }, false);
+                    var newCat = targetStore.StoreData.SellCategories.Last();
+                    foreach (var o in cat.Offers) {
+                        newCat.AddTradeOffer(o.Stack.Item.TypeID, o.MinDurability, o.MaxDurability, o.Price, o.Limit, null);
+                        countSellOffers++;
+                    }
+                }
+                sb.AppendLine($"Copied {countSellOffers} sell and {countBuyOffers} buy offers successfully.");
+            }
+            SendMessage(user, sb.ToString());
         }
+
+        [ChatSubCommand(nameof(DarkTools), "Copy exchangedata from a source to a target exchange. Usage: /dt copyexchange 0,1 - Get exchangeindices by using copyexchange without parameter.","copyexchange", ChatAuthorizationLevel.User)]
+        public static async Task CopyExchange(User user, int source = -1, int target = -1) {
+
+            var sb = new StringBuilder();
+            var myExchanges = WorldObjectUtil.AllObjsWithComponent<ExchangeComponent>().Where(ex => ex.IsRPCAuthorized(user.Player, AccessType.FullAccess, Array.Empty<object>())).OrderBy(s => s.Parent.Name).ToList();
+            if (myExchanges.Count == 0) {
+                SendMessage(user, "No owned exchange found.");
+                return;
+            }
+            int index = 0;
+            if (source >= myExchanges.Count || target >= myExchanges.Count || source < 0 || target < 0 || source == target) {
+                sb.AppendLine($"Use /dt copyexchange sourceindex targetindex");
+                sb.AppendLine($"Your Exchanges:");
+                foreach (var exchange in myExchanges) {
+                    sb.AppendLine($"({index}) : {exchange.Parent.MarkedUpName}");
+                    index++;
+                }
+            }
+            else {
+                var sourceExchange = myExchanges[source];
+                var targetExchange = myExchanges[target];
+                var confirmation = await user.ConfirmBoxLoc($"Do you really want to copy {sourceExchange.Parent.Name} to {targetExchange.Parent.Name} and overwrite all exchanges and holdings?");
+                if (!confirmation) {
+                    SendMessage(user, "CopyExchange cancelled!");
+                    return;
+                }
+                sb.AppendLine($"Copying exchange {sourceExchange.Parent.Name} to {targetExchange.Parent.Name}");
+                targetExchange.ExchangeList.Clear();
+                targetExchange.HoldingList.Clear();
+                foreach (var entry in sourceExchange.ExchangeList)
+                    targetExchange.ExchangeList.Add(new ExchangeEntry { CustomerCurrency = entry.CustomerCurrency, OwnerCurrency = entry.OwnerCurrency, Price = entry.Price });
+                foreach (var entry in sourceExchange.HoldingList)
+                    targetExchange.HoldingList.Add(new HoldingEntry { Currency = entry.Currency, Max = entry.Max, Min = entry.Min });
+            }
+            SendMessage(user, sb.ToString());
+        }
+
+        
     }
 }
